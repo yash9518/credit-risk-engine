@@ -1,0 +1,31 @@
+{
+  "logistic_regression": {
+    "cv_auc_mean": 0.7621,
+    "cv_auc_std": 0.0057,
+    "test": {
+      "roc_auc": 0.7454,
+      "gini": 0.4908,
+      "ks": 0.3866,
+      "pr_auc": 0.5058,
+      "brier": 0.1424
+    }
+  },
+  "lightgbm": {
+    "cv_auc_mean": 0.7884,
+    "cv_auc_std": 0.0042,
+    "test": {
+      "roc_auc": 0.7834,
+      "gini": 0.5668,
+      "ks": 0.439,
+      "pr_auc": 0.5671,
+      "brier": 0.1341
+    },
+    "train_auc": 0.8206
+  },
+  "band_cutoffs": {
+    "red": 0.5761,
+    "amber": 0.2253
+  },
+  "n_train": 24000,
+  "n_test": 6000
+}

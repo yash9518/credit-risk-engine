@@ -1,0 +1,4 @@
+band,accounts,defaults,share_of_book,default_rate,share_of_all_defaults
+RED,615,428,0.1025,0.6959,0.3225
+AMBER,1185,421,0.1975,0.3553,0.3173
+GREEN,4200,478,0.7,0.1138,0.3602

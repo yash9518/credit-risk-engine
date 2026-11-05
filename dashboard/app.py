@@ -1,92 +1,128 @@
-import streamlit as st
-import pandas as pd
-import numpy as np
-import joblib
-import shap
-import matplotlib.pyplot as plt
+"""Credit-card early-warning dashboard.
 
-st.set_page_config(page_title="Retail Credit Decision Engine", layout="wide")
-st.title("Credit Risk Scoring & Anomaly Detection Portal")
-st.markdown("Underwriting decision support tool with SHAP explainability and automated risk flags.")
+Tab 1 - Account review: pick a held-out test account, edit its 6-month history
+        (what-if), see the probability of default, its early-warning band and the
+        SHAP reasons behind the score.
+Tab 2 - Portfolio view: test-set metrics, band summary, decile/lift table,
+        calibration.
+
+Run from the repository root:  python -m streamlit run dashboard/app.py
+"""
+import json
+import sys
+from pathlib import Path
+
+import joblib
+import matplotlib.pyplot as plt
+import pandas as pd
+import shap
+import streamlit as st
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from src.config import MODELS_DIR, RAW_CSV, REPORTS_DIR  # noqa: E402
+from src.feature_store import build_features  # noqa: E402
+from src.model import assign_band  # noqa: E402
+
+st.set_page_config(page_title="Credit Card Early-Warning System", layout="wide")
+st.title("Credit Card Delinquency Early-Warning System")
+st.caption("Real data: UCI 'Default of Credit Card Clients' (Taiwan, 2005, 30,000 accounts). "
+           "Predicts whether an existing cardholder defaults on next month's payment.")
+
+MONTHS = ["Sep", "Aug", "Jul", "Jun", "May", "Apr"]
+PAY_COLS = ["PAY_0", "PAY_2", "PAY_3", "PAY_4", "PAY_5", "PAY_6"]
+STATUS_HELP = "-2 no usage, -1 paid in full, 0 minimum paid, 1-8 = months overdue"
+
 
 @st.cache_resource
-def load_models():
-    model = joblib.load("src/lgbm_credit_model.pkl")
-    anomaly = joblib.load("src/anomaly_isolation_forest.pkl")
-    features = joblib.load("src/model_features.pkl")
-    explainer = joblib.load("src/shap_explainer.pkl")
-    return model, anomaly, features, explainer
+def load_artifacts():
+    model = joblib.load(MODELS_DIR / "lgbm_model.pkl")
+    meta = joblib.load(MODELS_DIR / "metadata.pkl")
+    explainer = shap.TreeExplainer(model)
+    raw = pd.read_csv(RAW_CSV).set_index("ID")
+    return model, meta, explainer, raw
+
 
 try:
-    model, anomaly_model, feature_cols, explainer = load_models()
-except Exception:
-    st.warning("Run training scripts first to generate model artifacts before evaluating applicants.")
+    model, meta, explainer, raw = load_artifacts()
+except FileNotFoundError:
+    st.warning("Model artefacts not found. Run `python -m src.data`, `python -m src.feature_store` "
+               "and `python -m src.model` first.")
     st.stop()
 
-col1, col2 = st.columns(2)
+features, cut = meta["features"], meta["band_cutoffs"]
+BAND_COLOUR = {"RED": "🔴", "AMBER": "🟠", "GREEN": "🟢"}
 
-with col1:
-    st.subheader("Applicant Financial Details")
-    income = st.number_input("Annual Income (INR)", min_value=10000.0, value=500000.0, step=10000.0)
-    credit = st.number_input("Loan Amount Requested (INR)", min_value=10000.0, value=1000000.0, step=50000.0)
-    annuity = st.number_input("Monthly Annuity / EMI (INR)", min_value=1000.0, value=25000.0, step=1000.0)
-    age = st.slider("Applicant Age", 20, 70, 32)
-    emp_years = st.slider("Years of Employment", 0, 40, 5)
+tab_account, tab_portfolio = st.tabs(["Account review", "Portfolio view"])
 
-with col2:
-    st.subheader("Bureau & External Risk Ratings")
-    ext_1 = st.slider("External Source 1 Score", 0.0, 1.0, 0.5)
-    ext_2 = st.slider("External Source 2 Score", 0.0, 1.0, 0.5)
-    ext_3 = st.slider("External Source 3 Score", 0.0, 1.0, 0.5)
-    is_cash_loan = st.selectbox("Contract Type", ["Cash loans", "Revolving loans"])
+with tab_account:
+    acc_id = st.selectbox("Held-out test account ID", meta["test_ids"][:500])
+    row = raw.loc[acc_id]
 
-if st.button("Evaluate Credit Application"):
-    c_to_i = credit / income
-    d_to_s = annuity / income
-    a_to_c = annuity / credit
+    c1, c2 = st.columns([1, 2])
+    with c1:
+        st.subheader("Profile")
+        limit = st.number_input("Credit limit (NT$)", 10_000, 1_000_000, int(row["LIMIT_BAL"]), step=10_000)
+        age = st.number_input("Age", 21, 79, int(row["AGE"]))
+        edu_now = int(row["EDUCATION"]) if row["EDUCATION"] in (1, 2, 3) else 4
+        edu = st.selectbox("Education", [1, 2, 3, 4], index=edu_now - 1,
+                           format_func={1: "Graduate school", 2: "University", 3: "High school", 4: "Other"}.get)
+        actual = int(row["default.payment.next.month"])
+        st.write(f"Actual outcome next month: **{'DEFAULT' if actual else 'No default'}**")
+    with c2:
+        st.subheader("Last 6 months (editable for what-if)")
+        hist = pd.DataFrame({
+            "month": MONTHS,
+            "repayment_status": [int(row[c]) for c in PAY_COLS],
+            "bill_amount": [int(row[f"BILL_AMT{i}"]) for i in range(1, 7)],
+            "amount_paid": [int(row[f"PAY_AMT{i}"]) for i in range(1, 7)],
+        })
+        hist = st.data_editor(hist, disabled=["month"], hide_index=True, key=f"hist_{acc_id}",
+                              column_config={"repayment_status": st.column_config.NumberColumn(
+                                  min_value=-2, max_value=8, step=1, help=STATUS_HELP)})
 
-    input_dict = {
-        'AMT_INCOME_TOTAL': income,
-        'AMT_CREDIT': credit,
-        'AMT_ANNUITY': annuity,
-        'credit_to_income_ratio': c_to_i,
-        'debt_service_ratio': d_to_s,
-        'annuity_to_credit_ratio': a_to_c,
-        'age_years': age,
-        'employment_years': emp_years,
-        'EXT_SOURCE_1': ext_1,
-        'EXT_SOURCE_2': ext_2,
-        'EXT_SOURCE_3': ext_3,
-        'NAME_CONTRACT_TYPE_Revolving loans': 1 if is_cash_loan == "Revolving loans" else 0
-    }
-    
-    input_df = pd.DataFrame([input_dict])
-    for col in feature_cols:
-        if col not in input_df.columns:
-            input_df[col] = 0
-    input_df = input_df[feature_cols]
+    # Rebuild a raw-format row and push it through the SAME SQL used in training.
+    rec = {"ID": acc_id, "LIMIT_BAL": limit, "SEX": row["SEX"], "EDUCATION": edu,
+           "MARRIAGE": row["MARRIAGE"], "AGE": age}
+    for i, c in enumerate(PAY_COLS):
+        rec[c] = int(hist.loc[i, "repayment_status"])
+    for i in range(6):
+        rec[f"BILL_AMT{i + 1}"] = float(hist.loc[i, "bill_amount"])
+        rec[f"PAY_AMT{i + 1}"] = float(hist.loc[i, "amount_paid"])
+    X = build_features(pd.DataFrame([rec]))[features]
 
-    pd_score = model.predict_proba(input_df)[0][1]
-    anomaly_input = pd.DataFrame([[income, credit, annuity, c_to_i, d_to_s]], 
-                                 columns=['AMT_INCOME_TOTAL', 'AMT_CREDIT', 'AMT_ANNUITY', 'credit_to_income_ratio', 'debt_service_ratio'])
-    is_anomaly = anomaly_model.predict(anomaly_input)[0] == -1
+    pd_score = float(model.predict_proba(X)[0, 1])
+    band = assign_band([pd_score], cut)[0]
 
     st.markdown("---")
-    res_col1, res_col2 = st.columns(2)
-    with res_col1:
-        st.metric("Default Probability (PD)", f"{pd_score * 100:.2f}%")
-        if pd_score > 0.40:
-            st.error("Decision: High Risk - Decline / Underwriter Review")
-        else:
-            st.success("Decision: Low/Moderate Risk - Pre-Approval Eligible")
-    with res_col2:
-        if is_anomaly:
-            st.warning("Behavioral Anomaly Detected: Irregular loan-to-income distribution.")
-        else:
-            st.info("Applicant distribution matches standard retail profile.")
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Probability of default (next month)", f"{pd_score:.1%}")
+    m2.metric("Early-warning band", f"{BAND_COLOUR[band]} {band}")
+    m3.metric("Portfolio average PD", f"{meta['train_scores'].mean():.1%}")
+    action = {"RED": "Immediate collections contact, freeze limit increases, consider limit reduction.",
+              "AMBER": "Add to watch-list: payment reminder / SMS nudge before due date.",
+              "GREEN": "No action; business as usual."}[band]
+    st.info(f"Suggested action: {action}")
 
-    st.subheader("Underwriter Explanation (SHAP Waterfall)")
-    shap_values = explainer(input_df)
-    fig, ax = plt.subplots()
-    shap.plots.waterfall(shap_values[0], max_display=7, show=False)
-    st.pyplot(fig)
+    st.subheader("Why this score? (SHAP, log-odds scale)")
+    sv = explainer(X)
+    fig = plt.figure()
+    shap.plots.waterfall(sv[0], max_display=8, show=False)
+    st.pyplot(fig, clear_figure=True)
+    with st.expander("Engineered features sent to the model"):
+        st.dataframe(X.T.rename(columns={0: "value"}))
+
+with tab_portfolio:
+    m = json.loads((REPORTS_DIR / "metrics.json").read_text())
+    st.subheader("Hold-out test set performance (6,000 accounts)")
+    perf = pd.DataFrame({k: m[k]["test"] for k in ("logistic_regression", "lightgbm")}).T
+    perf["cv_auc (5-fold)"] = [f"{m[k]['cv_auc_mean']:.3f} ± {m[k]['cv_auc_std']:.3f}"
+                               for k in ("logistic_regression", "lightgbm")]
+    st.dataframe(perf)
+    st.subheader("Early-warning bands")
+    st.dataframe(pd.read_csv(REPORTS_DIR / "early_warning_bands.csv"), hide_index=True)
+    st.subheader("Decile / lift table (decile 1 = riskiest)")
+    st.dataframe(pd.read_csv(REPORTS_DIR / "decile_table.csv"), hide_index=True)
+    st.subheader("Calibration (predicted vs observed default rate)")
+    cal = pd.read_csv(REPORTS_DIR / "calibration_table.csv")
+    st.line_chart(cal[["predicted_pd", "observed_rate"]])

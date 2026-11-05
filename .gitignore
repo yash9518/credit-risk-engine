@@ -1,7 +1,8 @@
 .venv/
 .venv*/
-data/
+data/processed/
+models/
 *.pkl
 __pycache__/
 *.pyc
-.env    
+.env
