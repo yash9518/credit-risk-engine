@@ -17,3 +17,4 @@ TEST_SIZE = 0.20
 # top 10% riskiest accounts -> RED, next 20% -> AMBER, remaining 70% -> GREEN.
 RED_PCT = 0.10
 AMBER_PCT = 0.20
+DEPLOY_DIR = ROOT / "artifacts"  # small, version-independent files committed for the live app

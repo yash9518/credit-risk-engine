@@ -22,7 +22,7 @@ from sklearn.model_selection import StratifiedKFold, train_test_split
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
-from src.config import (AMBER_PCT, FEATURES_CSV, ID_COL, MODELS_DIR, RANDOM_STATE, RED_PCT,
+from src.config import (AMBER_PCT, DEPLOY_DIR, FEATURES_CSV, ID_COL, MODELS_DIR, RANDOM_STATE, RED_PCT,
                         REPORTS_DIR, TARGET, TEST_SIZE)
 
 # SEX and marital status are deliberately NOT used: they are protected/sensitive
@@ -120,10 +120,7 @@ def calibration_table(y, p, bins=10) -> pd.DataFrame:
     return t.round(4).reset_index(drop=True)
 
 
-def main(fast: bool = False) -> None:
-    """fast=True (used by the deployed dashboard on cold start): only fit the final
-    models and save them; skip cross-validation, SHAP importance and report files,
-    which are already committed in reports/."""
+def main() -> None:
     df = pd.read_csv(FEATURES_CSV)
     X, y = df[MODEL_FEATURES], df[TARGET]
     X_tr, X_te, y_tr, y_te, id_tr, id_te = train_test_split(
@@ -133,7 +130,7 @@ def main(fast: bool = False) -> None:
     results = {}
     fitted = {}
     for name, factory in [("logistic_regression", make_logit), ("lightgbm", make_lgbm)]:
-        cv = {"cv_auc_mean": float("nan"), "cv_auc_std": float("nan")} if fast else cross_validate(factory, X_tr, y_tr)
+        cv = cross_validate(factory, X_tr, y_tr)
         model = factory().fit(X_tr, y_tr)
         p_te = model.predict_proba(X_te)[:, 1]
         results[name] = {**cv, "test": metrics(y_te, p_te)}
@@ -146,16 +143,6 @@ def main(fast: bool = False) -> None:
     results["lightgbm"]["train_auc"] = round(roc_auc_score(y_tr, p_tr), 4)  # overfitting check
 
     cut = band_cutoffs(p_tr)
-    MODELS_DIR.mkdir(exist_ok=True)
-    joblib.dump(lgbm, MODELS_DIR / "lgbm_model.pkl")
-    joblib.dump(fitted["logistic_regression"], MODELS_DIR / "logit_model.pkl")
-    joblib.dump({"features": MODEL_FEATURES, "band_cutoffs": cut,
-                 "test_ids": id_te.tolist(), "train_scores": p_tr, "test_scores": p_te},
-                MODELS_DIR / "metadata.pkl")
-    if fast:
-        print(f"Saved models to {MODELS_DIR} (fast mode: reports not regenerated)")
-        return
-
     deciles = decile_table(y_te, p_te)
     bands = band_table(y_te, p_te, cut)
     calib = calibration_table(y_te, p_te)
@@ -167,8 +154,23 @@ def main(fast: bool = False) -> None:
     print("\nEarly-warning bands (test set)\n", bands.to_string(index=False))
     print("\nTop drivers (mean |SHAP|)\n", importance.head(8).to_string(index=False))
 
-    # ---- save reports ----
+    # ---- save artefacts ----
+    MODELS_DIR.mkdir(exist_ok=True)
     REPORTS_DIR.mkdir(exist_ok=True)
+    joblib.dump(lgbm, MODELS_DIR / "lgbm_model.pkl")
+    joblib.dump(fitted["logistic_regression"], MODELS_DIR / "logit_model.pkl")
+    joblib.dump({"features": MODEL_FEATURES, "band_cutoffs": cut,
+                 "test_ids": id_te.tolist(), "train_scores": p_tr, "test_scores": p_te},
+                MODELS_DIR / "metadata.pkl")
+
+    # Deployment artefacts: LightGBM's native text format loads across library
+    # versions (unlike a pickle), so the live dashboard never has to retrain.
+    DEPLOY_DIR.mkdir(exist_ok=True)
+    lgbm.booster_.save_model(str(DEPLOY_DIR / "lgbm_booster.txt"))
+    (DEPLOY_DIR / "deploy_meta.json").write_text(json.dumps({
+        "features": MODEL_FEATURES, "band_cutoffs": cut,
+        "portfolio_avg_pd": float(p_tr.mean()), "test_ids": [int(i) for i in id_te],
+    }))
 
     results["band_cutoffs"] = {k: round(v, 4) for k, v in cut.items()}
     results["n_train"], results["n_test"] = len(X_tr), len(X_te)

@@ -12,7 +12,7 @@ import json
 import sys
 from pathlib import Path
 
-import joblib
+import lightgbm as lgb
 import matplotlib.pyplot as plt
 import pandas as pd
 import shap
@@ -20,7 +20,7 @@ import streamlit as st
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from src.config import MODELS_DIR, RAW_CSV, REPORTS_DIR  # noqa: E402
+from src.config import DEPLOY_DIR, RAW_CSV, REPORTS_DIR  # noqa: E402
 from src.feature_store import build_features  # noqa: E402
 from src.model import assign_band  # noqa: E402
 
@@ -34,26 +34,14 @@ PAY_COLS = ["PAY_0", "PAY_2", "PAY_3", "PAY_4", "PAY_5", "PAY_6"]
 STATUS_HELP = "-2 no usage, -1 paid in full, 0 minimum paid, 1-8 = months overdue"
 
 
-def ensure_trained() -> None:
-    """On a fresh deployment (e.g. Streamlit Community Cloud) model files are not
-    in git, so run the full pipeline once: validate data -> features -> train."""
-    if (MODELS_DIR / "lgbm_model.pkl").exists() and (MODELS_DIR / "metadata.pkl").exists():
-        return
-    from src import data, feature_store, model as model_step
-    with st.spinner("First start: validating data and training the model (about 20-40 seconds)..."):
-        data.main()
-        feature_store.main()
-        model_step.main(fast=True)
-
-
 @st.cache_resource
 def load_artifacts():
-    ensure_trained()
-    model = joblib.load(MODELS_DIR / "lgbm_model.pkl")
-    meta = joblib.load(MODELS_DIR / "metadata.pkl")
-    explainer = shap.TreeExplainer(model)
+    """Load the committed, pre-trained model (no training happens in the app)."""
+    booster = lgb.Booster(model_file=str(DEPLOY_DIR / "lgbm_booster.txt"))
+    meta = json.loads((DEPLOY_DIR / "deploy_meta.json").read_text())
+    explainer = shap.TreeExplainer(booster)
     raw = pd.read_csv(RAW_CSV).set_index("ID")
-    return model, meta, explainer, raw
+    return booster, meta, explainer, raw
 
 
 model, meta, explainer, raw = load_artifacts()
@@ -99,14 +87,14 @@ with tab_account:
         rec[f"PAY_AMT{i + 1}"] = float(hist.loc[i, "amount_paid"])
     X = build_features(pd.DataFrame([rec]))[features]
 
-    pd_score = float(model.predict_proba(X)[0, 1])
+    pd_score = float(model.predict(X)[0])  # booster returns P(default)
     band = assign_band([pd_score], cut)[0]
 
     st.markdown("---")
     m1, m2, m3 = st.columns(3)
     m1.metric("Probability of default (next month)", f"{pd_score:.1%}")
     m2.metric("Early-warning band", f"{BAND_COLOUR[band]} {band}")
-    m3.metric("Portfolio average PD", f"{meta['train_scores'].mean():.1%}")
+    m3.metric("Portfolio average PD", f"{meta['portfolio_avg_pd']:.1%}")
     action = {"RED": "Immediate collections contact, freeze limit increases, consider limit reduction.",
               "AMBER": "Add to watch-list: payment reminder / SMS nudge before due date.",
               "GREEN": "No action; business as usual."}[band]

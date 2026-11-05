@@ -67,6 +67,7 @@ python -m streamlit run dashboard/app.py
 | `src/feature_store.py` | 18 behavioural features written in SQL (SQLite); also used by the dashboard, so training and serving use one code path |
 | `src/model.py` | Logistic vs LightGBM, 5-fold CV, test metrics, decile/lift, bands, calibration, SHAP importance |
 | `dashboard/app.py` | Account review (editable what-if history, PD, band, action, SHAP waterfall) and portfolio view |
+| `artifacts/` | Pre-trained LightGBM (native text format) + metadata used by the live app |
 | `reports/` | Committed outputs of the last run (metrics, deciles, bands, calibration, SHAP importance) |
 
 ### Engineered features (all known at the September month-end, so there is no look-ahead)
@@ -80,7 +81,7 @@ python -m streamlit run dashboard/app.py
 1. Go to <https://share.streamlit.io> and sign in with GitHub.
 2. Click **Create app**, then **Deploy a public app from GitHub**.
 3. Set **Repository** to `yash9518/credit-risk-engine`, **Branch** to `main` (or the feature branch) and **Main file path** to `dashboard/app.py`. Optionally set a custom subdomain, e.g. `credit-early-warning`.
-4. Click **Deploy**. The first start validates the data and trains the model automatically (≈30 s), because model files are not stored in git.
+4. Click **Deploy**. The app loads the pre-trained model committed in `artifacts/` (LightGBM text format + JSON metadata), so it never trains on the server and starts in seconds. Re-running `python -m src.model` regenerates these files.
 
 ## Limitations (say these before the interviewer does)
 - **Snapshot data**: there is only one observation month, so out-of-time validation and real PSI drift monitoring are not possible. The split is a random stratified one.
