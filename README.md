@@ -2,6 +2,8 @@
 
 Predicts which **existing credit-card customers will miss next month's payment**, so a collections team can act before the default happens. The project uses a **real, public dataset** of 30,000 Taiwanese cardholders. It covers SQL feature engineering, a logistic-regression baseline compared against LightGBM, banking-standard validation (AUC, Gini, KS, calibration, lift), RED/AMBER/GREEN early-warning bands, and a Streamlit dashboard with SHAP reason codes.
 
+**Live demo:** _add your Streamlit Cloud URL here after deploying (see [Deploy](#deploy-free-streamlit-community-cloud))_
+
 > This is **behavioural scoring** (monitoring accounts already on the book).
 > It is *not* application/underwriting scoring (deciding whether to lend in the first place).
 
@@ -73,6 +75,12 @@ python -m streamlit run dashboard/app.py
 - **Repayment capacity**: payment ÷ previous bill (latest and 3-month average, capped at 1), months with zero payment, log of last payment.
 - **Profile**: credit limit, age, education group.
 - **Not used on purpose**: SEX and marital status, because they are sensitive attributes and pose a fair-lending risk.
+
+## Deploy (free, Streamlit Community Cloud)
+1. Go to <https://share.streamlit.io> and sign in with GitHub.
+2. Click **Create app**, then **Deploy a public app from GitHub**.
+3. Set **Repository** to `yash9518/credit-risk-engine`, **Branch** to `main` (or the feature branch) and **Main file path** to `dashboard/app.py`. Optionally set a custom subdomain, e.g. `credit-early-warning`.
+4. Click **Deploy**. The first start validates the data and trains the model automatically (≈30 s), because model files are not stored in git.
 
 ## Limitations (say these before the interviewer does)
 - **Snapshot data**: there is only one observation month, so out-of-time validation and real PSI drift monitoring are not possible. The split is a random stratified one.

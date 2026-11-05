@@ -34,8 +34,21 @@ PAY_COLS = ["PAY_0", "PAY_2", "PAY_3", "PAY_4", "PAY_5", "PAY_6"]
 STATUS_HELP = "-2 no usage, -1 paid in full, 0 minimum paid, 1-8 = months overdue"
 
 
+def ensure_trained() -> None:
+    """On a fresh deployment (e.g. Streamlit Community Cloud) model files are not
+    in git, so run the full pipeline once: validate data -> features -> train."""
+    if (MODELS_DIR / "lgbm_model.pkl").exists() and (MODELS_DIR / "metadata.pkl").exists():
+        return
+    from src import data, feature_store, model as model_step
+    with st.spinner("First start: validating data and training the model (about 10-30 seconds)..."):
+        data.main()
+        feature_store.main()
+        model_step.main()
+
+
 @st.cache_resource
 def load_artifacts():
+    ensure_trained()
     model = joblib.load(MODELS_DIR / "lgbm_model.pkl")
     meta = joblib.load(MODELS_DIR / "metadata.pkl")
     explainer = shap.TreeExplainer(model)
@@ -43,12 +56,7 @@ def load_artifacts():
     return model, meta, explainer, raw
 
 
-try:
-    model, meta, explainer, raw = load_artifacts()
-except FileNotFoundError:
-    st.warning("Model artefacts not found. Run `python -m src.data`, `python -m src.feature_store` "
-               "and `python -m src.model` first.")
-    st.stop()
+model, meta, explainer, raw = load_artifacts()
 
 features, cut = meta["features"], meta["band_cutoffs"]
 BAND_COLOUR = {"RED": "🔴", "AMBER": "🟠", "GREEN": "🟢"}
