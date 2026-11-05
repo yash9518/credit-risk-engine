@@ -2,7 +2,8 @@
 
 Predicts which **existing credit-card customers will miss next month's payment**, so a collections team can act before the default happens. The project uses a **real, public dataset** of 30,000 Taiwanese cardholders. It covers SQL feature engineering, a logistic-regression baseline compared against LightGBM, banking-standard validation (AUC, Gini, KS, calibration, lift), RED/AMBER/GREEN early-warning bands, and a Streamlit dashboard with SHAP reason codes.
 
-**Live demo:** _add your Streamlit Cloud URL here after deploying (see [Deploy](#deploy-free-streamlit-community-cloud))_
+**Live demo:** https://credit-risk-engine-dj6pjefck3bzfmpxfswsz9.streamlit.app/  
+_(Free hosting: if the app is asleep, click "Yes, get this app back up!" and wait ~1 minute.)_
 
 > This is **behavioural scoring** (monitoring accounts already on the book).
 > It is *not* application/underwriting scoring (deciding whether to lend in the first place).
