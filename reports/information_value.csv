@@ -1,0 +1,18 @@
+feature,iv,n_bins,strength
+pay_status_latest,0.8793,5,very strong*
+months_delinquent_6m,0.8656,4,very strong*
+months_delinquent_3m,0.8361,4,very strong*
+max_dpd_bucket_6m,0.7946,4,very strong*
+months_zero_payment_5m,0.4172,3,strong
+delinquency_trend,0.3589,3,strong
+payment_ratio_latest,0.2109,8,medium
+credit_limit,0.1966,10,medium
+log_last_payment,0.1753,10,medium
+payment_ratio_avg_3m,0.1284,9,medium
+utilization_avg_6m,0.1281,10,medium
+utilization_latest,0.0788,10,weak
+utilization_change_3m,0.0744,10,weak
+months_paid_in_full_6m,0.0514,5,weak
+education_grp,0.0361,4,weak
+age,0.0216,10,weak
+over_limit_flag,0.0175,2,useless

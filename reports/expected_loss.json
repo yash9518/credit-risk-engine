@@ -1,0 +1,10 @@
+{
+  "lgd_assumption": 0.75,
+  "portfolio_expected_loss_NT$": 50128281,
+  "realised_loss_at_same_lgd_NT$": 50447234,
+  "expected_by_band_NT$": {
+    "RED": 21875239,
+    "AMBER": 9412011,
+    "GREEN": 18841032
+  }
+}

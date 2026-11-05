@@ -1,0 +1,4 @@
+strategy,accounts_contacted,defaulters_caught,share_of_defaulters,loss_covered_NT$,share_of_total_loss
+rank by PD,600,420,0.3165,21658773,0.4293
+rank by expected loss,600,301,0.2268,32082271,0.636
+random,600,129,0.0972,5123428,0.1016

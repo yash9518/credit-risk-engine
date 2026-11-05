@@ -1,0 +1,6 @@
+group,accounts,observed_default_rate,mean_predicted_pd,auc,share_red_band
+sex=female,3598,0.2129,0.217,0.7854,0.0992
+sex=male,2402,0.2336,0.2291,0.7793,0.1074
+age_group=30-45,3122,0.2101,0.2096,0.7746,0.091
+age_group=<30,1912,0.2233,0.2306,0.7926,0.1161
+age_group=>45,966,0.2526,0.2443,0.7884,0.1128

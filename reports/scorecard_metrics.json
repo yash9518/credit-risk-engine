@@ -1,0 +1,35 @@
+{
+  "selected_features": [
+    "pay_status_latest",
+    "max_dpd_bucket_6m",
+    "credit_limit",
+    "log_last_payment",
+    "payment_ratio_avg_3m",
+    "utilization_avg_6m",
+    "utilization_change_3m",
+    "education_grp",
+    "age"
+  ],
+  "dropped_features": {
+    "months_delinquent_6m": "corr 0.75 with pay_status_latest",
+    "months_delinquent_3m": "corr 0.83 with pay_status_latest",
+    "months_zero_payment_5m": "corr 0.71 with max_dpd_bucket_6m",
+    "delinquency_trend": "corr 0.75 with pay_status_latest",
+    "utilization_latest": "corr 0.75 with utilization_avg_6m",
+    "months_paid_in_full_6m": "wrong coefficient sign",
+    "payment_ratio_latest": "wrong coefficient sign"
+  },
+  "n_features": 9,
+  "all_coefficients_negative": true,
+  "test": {
+    "roc_auc": 0.7593,
+    "gini": 0.5186,
+    "ks": 0.3951
+  },
+  "score_range_test": [
+    435,
+    575
+  ],
+  "median_score_defaulters": 508,
+  "median_score_non_defaulters": 544
+}
