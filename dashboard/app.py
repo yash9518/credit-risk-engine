@@ -40,10 +40,10 @@ def ensure_trained() -> None:
     if (MODELS_DIR / "lgbm_model.pkl").exists() and (MODELS_DIR / "metadata.pkl").exists():
         return
     from src import data, feature_store, model as model_step
-    with st.spinner("First start: validating data and training the model (about 10-30 seconds)..."):
+    with st.spinner("First start: validating data and training the model (about 20-40 seconds)..."):
         data.main()
         feature_store.main()
-        model_step.main()
+        model_step.main(fast=True)
 
 
 @st.cache_resource

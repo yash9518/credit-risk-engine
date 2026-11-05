@@ -120,7 +120,10 @@ def calibration_table(y, p, bins=10) -> pd.DataFrame:
     return t.round(4).reset_index(drop=True)
 
 
-def main() -> None:
+def main(fast: bool = False) -> None:
+    """fast=True (used by the deployed dashboard on cold start): only fit the final
+    models and save them; skip cross-validation, SHAP importance and report files,
+    which are already committed in reports/."""
     df = pd.read_csv(FEATURES_CSV)
     X, y = df[MODEL_FEATURES], df[TARGET]
     X_tr, X_te, y_tr, y_te, id_tr, id_te = train_test_split(
@@ -130,7 +133,7 @@ def main() -> None:
     results = {}
     fitted = {}
     for name, factory in [("logistic_regression", make_logit), ("lightgbm", make_lgbm)]:
-        cv = cross_validate(factory, X_tr, y_tr)
+        cv = {"cv_auc_mean": float("nan"), "cv_auc_std": float("nan")} if fast else cross_validate(factory, X_tr, y_tr)
         model = factory().fit(X_tr, y_tr)
         p_te = model.predict_proba(X_te)[:, 1]
         results[name] = {**cv, "test": metrics(y_te, p_te)}
@@ -143,6 +146,16 @@ def main() -> None:
     results["lightgbm"]["train_auc"] = round(roc_auc_score(y_tr, p_tr), 4)  # overfitting check
 
     cut = band_cutoffs(p_tr)
+    MODELS_DIR.mkdir(exist_ok=True)
+    joblib.dump(lgbm, MODELS_DIR / "lgbm_model.pkl")
+    joblib.dump(fitted["logistic_regression"], MODELS_DIR / "logit_model.pkl")
+    joblib.dump({"features": MODEL_FEATURES, "band_cutoffs": cut,
+                 "test_ids": id_te.tolist(), "train_scores": p_tr, "test_scores": p_te},
+                MODELS_DIR / "metadata.pkl")
+    if fast:
+        print(f"Saved models to {MODELS_DIR} (fast mode: reports not regenerated)")
+        return
+
     deciles = decile_table(y_te, p_te)
     bands = band_table(y_te, p_te, cut)
     calib = calibration_table(y_te, p_te)
@@ -154,14 +167,8 @@ def main() -> None:
     print("\nEarly-warning bands (test set)\n", bands.to_string(index=False))
     print("\nTop drivers (mean |SHAP|)\n", importance.head(8).to_string(index=False))
 
-    # ---- save artefacts ----
-    MODELS_DIR.mkdir(exist_ok=True)
+    # ---- save reports ----
     REPORTS_DIR.mkdir(exist_ok=True)
-    joblib.dump(lgbm, MODELS_DIR / "lgbm_model.pkl")
-    joblib.dump(fitted["logistic_regression"], MODELS_DIR / "logit_model.pkl")
-    joblib.dump({"features": MODEL_FEATURES, "band_cutoffs": cut,
-                 "test_ids": id_te.tolist(), "train_scores": p_tr, "test_scores": p_te},
-                MODELS_DIR / "metadata.pkl")
 
     results["band_cutoffs"] = {k: round(v, 4) for k, v in cut.items()}
     results["n_train"], results["n_test"] = len(X_tr), len(X_te)
